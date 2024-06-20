@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Image Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+        }
+        .card {
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            background-color: #ffffff;
+            margin: auto;
+            padding: 20px;
+            border-radius: 8px;
+            width: 80%;
+            max-width: 320px;
+            overflow-y: auto; /* Enable vertical scrolling */
+            max-height: 80vh; /* Set maximum height */
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            background-color: #2196f3;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px; /* Add margin-top for spacing */
+        }
+        .btn:hover {
+            background-color: #1e88e5;
+        }
+        .btn:disabled {
+            background-color: #bdbdbd;
+            cursor: not-allowed;
+        }
+        .drop-area {
+            border: 2px dashed #bdbdbd;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            height: 420px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #eeeeee;
+        }
+        .center {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column; /* Allow for vertical stacking */
+        }
+        .text-placeholder {
+            margin-top: 20px; /* Margin to separate from other elements */
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .bubble {
+            background-color: #e0e0e0;
+            border-radius: 12px;
+            padding: 5px 10px;
+            display: inline-block;
+            font-size: 14px;
+        }
+        .processing-message {
+            margin-top: 20px;
+            font-size: 16px;
+            color: #757575;
+        }
+    </style>
+</head>
+<body>
+    <div class="center">
+        <div class="card">
+            <h2 style="text-align: center;">Image Captioner to Server</h2>
+            <button id="clear-upload" class="btn" style="background-color: #f44336;">Clear</button>
+            <br>
+            <div class="drop-area">
+                <span>Drag and drop your image here or click to upload</span>
+                <input type="file" style="display: none;" accept="image/*" onchange="previewFile(this)">
+            </div>
+            <div style="margin-top: 20px;">
+                <label for="target-filename">Target Filename:</label>
+                <input type="text" id="target-filename" name="target-filename" style="width: 80%; padding: 8px; margin-top: 8px;">
+            </div>
+            <div style="margin-top: 20px;">
+                <label for="target-caption-append">Target Caption Append:</label>
+                <input type="text" id="target-caption-append" name="target-caption-append" style="width: 80%; padding: 8px; margin-top: 8px;">
+            </div>
+            <div class="text-placeholder" id="caption-output">
+                <!-- Bubbles will be appended here -->
+            </div>
+            <br>
+            <button id="generate-caption" class="btn">Generate Caption</button>
+            <div id="processing-message" class="processing-message" style="display: none;">
+                Sedang membuat Caption...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const dropArea = document.querySelector('.drop-area');
+            const generateButton = document.getElementById('generate-caption');
+            const clearButton = document.getElementById('clear-upload');
+            const targetFilenameInput = document.getElementById('target-filename');
+            const targetCaptionInput = document.getElementById('target-caption-append');
+            const captionOutput = document.getElementById('caption-output');
+            const processingMessage = document.getElementById('processing-message');
+            let uploadedFile = null;
+
+            // Load values from cookies
+            targetFilenameInput.value = getCookie('targetFilename') || '';
+            targetCaptionInput.value = getCookie('targetCaption') || '';
+
+            dropArea.addEventListener('dragover', event => {
+                event.preventDefault();
+                dropArea.style.backgroundColor = '#ccc';
+            });
+
+            dropArea.addEventListener('dragleave', event => {
+                dropArea.style.backgroundColor = '#eeeeee';
+            });
+
+            dropArea.addEventListener('drop', event => {
+                event.preventDefault();
+                const files = event.dataTransfer.files;
+                handleFiles(files);
+            });
+
+            dropArea.addEventListener('click', () => {
+                dropArea.querySelector('input[type="file"]').click();
+            });
+
+            generateButton.addEventListener('click', () => {
+                setCookie('targetFilename', targetFilenameInput.value, 365);
+                setCookie('targetCaption', targetCaptionInput.value, 365);
+                if (uploadedFile) {
+                    uploadFile(uploadedFile);
+                }
+            });
+
+            clearButton.addEventListener('click', () => {
+                clearUpload();
+            });
+
+            window.previewFile = function(input) {
+                const file = input.files[0];
+                if (file) {
+                    uploadedFile = file;
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        dropArea.innerHTML = `<img src="${reader.result}" style="max-width: 100%; max-height: 100%; object-fit: contain;">`;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            }
+
+            function handleFiles(files) {
+                if (files.length) {
+                    previewFile({ files });
+                }
+            }
+
+            function uploadFile(file) {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('target_filename', targetFilenameInput.value);
+                formData.append('target_caption', targetCaptionInput.value);
+
+                generateButton.disabled = true;
+                generateButton.textContent = 'Processing...';
+                processingMessage.style.display = 'block';
+
+                fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.caption) {
+                        displayCaption(data.caption);
+                    } else {
+                        captionOutput.textContent = 'Failed to generate caption';
+                    }
+                })
+                .catch(error => {
+                    captionOutput.textContent = 'Error: ' + error.message;
+                })
+                .finally(() => {
+                    generateButton.disabled = false;
+                    generateButton.textContent = 'Generate Caption';
+                    processingMessage.style.display = 'none';
+                });
+            }
+
+            function clearUpload() {
+                uploadedFile = null;
+                dropArea.innerHTML = '<span>Drag and drop your image here or click to upload</span>';
+                captionOutput.innerHTML = '';
+            }
+
+            function displayCaption(caption) {
+                const tags = caption.split(', ');
+                captionOutput.innerHTML = '';
+                tags.forEach(tag => {
+                    const bubble = document.createElement('span');
+                    bubble.className = 'bubble';
+                    bubble.textContent = tag;
+                    captionOutput.appendChild(bubble);
+                });
+            }
+
+            function setCookie(name, value, days) {
+                const d = new Date();
+                d.setTime(d.getTime() + (days*24*60*60*1000));
+                const expires = "expires="+ d.toUTCString();
+                document.cookie = name + "=" + value + ";" + expires + ";path=/";
+            }
+
+            function getCookie(name) {
+                const cname = name + "=";
+                const decodedCookie = decodeURIComponent(document.cookie);
+                const ca = decodedCookie.split(';');
+                for(let i = 0; i < ca.length; i++) {
+                    let c = ca[i];
+                    while (c.charAt(0) == ' ') {
+                        c = c.substring(1);
+                    }
+                    if (c.indexOf(cname) == 0) {
+                        return c.substring(cname.length, c.length);
+                    }
+                }
+                return "";
+            }
+        });
+    </script>
+</body>
+</html>
