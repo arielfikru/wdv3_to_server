@@ -20,6 +20,7 @@ MODEL_REPO_MAP = {
     "vit": "SmilingWolf/wd-vit-tagger-v3",
     "swinv2": "SmilingWolf/wd-swinv2-tagger-v3",
     "convnext": "SmilingWolf/wd-convnext-tagger-v3",
+    "eva02": "SmilingWolf/wd-eva02-large-tagger-v3",
 }
 
 @flax.struct.dataclass
